@@ -27,6 +27,7 @@ from src.retriever import (
     load_artifacts
 )
 from src.ranking.reranker import rerank
+from src.optimizer.adaptive_optimizer import AdaptiveOptimizer
 
 ANSWER_NOT_FOUND = "I'm sorry, but I don't have enough information to answer that question."
 
@@ -131,7 +132,13 @@ def get_answer(
     elif cfg.use_indexed_chunks:
         ranked_chunks, topk_idxs = use_indexed_chunks(question, chunks)
     else:
-        retrieval_query = question
+        # retrieval_query = question
+        # FIX:
+        optimized_params = optimizer.optimize(question, cfg)
+
+        retrieval_query = optimized_params["query"]
+        cfg.top_k = optimized_params["top_k"]
+        cfg.use_hyde = optimized_params["use_hyde"]
         # print(f"Retrieval query: {retrieval_query}")
         if cfg.use_hyde:
             retrieval_query = generate_hypothetical_document(question, cfg.gen_model, max_tokens=cfg.hyde_max_tokens)
@@ -142,6 +149,13 @@ def get_answer(
             # print(f"Getting scores from retriever: {retriever.name}...")
             raw_scores[retriever.name] = retriever.get_scores(retrieval_query, pool_n, chunks)
         # TODO: Fix retrieval logging.
+
+        optimizer = AdaptiveOptimizer()
+        opt = optimizer.optimize(question, cfg)
+
+        retrieval_query = opt["query"]
+        cfg.top_k = opt["top_k"]
+        cfg.use_hyde = opt["use_hyde"]
 
         # print("Raw scores from retrievers:")
         # for retriever_name, score_dict in raw_scores.items():
